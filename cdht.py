@@ -45,66 +45,92 @@ class Peer:
     def second(self, new_second):
         self._second = new_second  
 
-    def send_ping_request(self):
-        lost_packets = 0
+    def client_thread(self):
+        first_lost_packets = 0
+        second_lost_packets = 0
         while True:
-            message = "Sending Ping Request"
+            message = "A ping request message was received from peer {0}".format(self._identity)
             self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._first + 50000))
             try:
-                self._UDPsocket.settimeout(1.0)     # Set time out to be 1 seconds
+                self._UDPsocket.settimeout(2.0)     # Set time out to be 2 seconds
                 data, addr = self._UDPsocket.recvfrom(1024)
                 self._UDPsocket.settimeout(None)
                 print(data.decode())
             except socket.timeout:
-                lost_packets = lost_packets + 1
-                if lost_packets > 2:          # if the number of lost packets is greater than 2, then we can assume it's leaving
+                first_lost_packets = first_lost_packets + 1
+                if first_lost_packets > 2:          # if the number of lost packets is greater than 2, then we can assume it's leaving
                     print("Peer {0} is no longer alive.".format(self._first))
                     self._first = self._second  # make the second successor to be the new first successor
+                    print("My first successor is now peer {0}".format(self._first))
                     self._TCPsocket.connect((socket.gethostname(), self._first + 50000))    # TCP socket connect to the second successor
                     self._TCPsocket.send("What's your next successor")
-                    self._TCPsocket.recv()
                     conn, addr = self._TCPsocket.accept()
                     data = conn.recv(1024)
                     self._second = int(data)   # set the new second successor
-                    lost_packets = 0           # set the number of lost packets to zero again
+                    print("My second successor is now peer {0}".format(self._second))
 
+                    # Start ping the new first and second successor
+                    self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._first + 50000))
+                    data, addr = self._UDPsocket.recvfrom(1024)
+                    print(data.decode())
+                    time.sleep(1)
 
+                    self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._second + 50000))
+                    data, addr = self._UDPsocket.recvfrom(1024)
+                    print(data.decode())
 
-            time.sleep(1)    # Sleep for 1 second after ping the first successor
-            self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self.second + 50000))
-            time.sleep(20)   # send ping requests to successors every 20 seconds
+                    first_lost_packets = 0           # set the number of lost packets to zero again
 
-    def catch_ping_response(self):
-        lost_packets = 0     
-        i = 0
+            time.sleep(1)      # sleep for 2 second and then start pinging to the second successor
 
-        while True:
-            # FIRST PART: Deal with UDP ping message 
-            if lost_packets > 2:    # If i is greater than 2, then we can assume the peer left
-                print("Peer {0} is no longer alive.".format())
-                
-                lost_packets = 0
+            self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._second + 50000))
             try:
-                self._UDPsocket.settimeout(1.0)     # Set time out to be 1 seconds
+                self._UDPsocket.settimeout(2.0)     # Set time out to be 2 seconds
                 data, addr = self._UDPsocket.recvfrom(1024)
                 self._UDPsocket.settimeout(None)
+                print(data.decode())
             except socket.timeout:
-                lost_packets = lost_packets + 1
-                continue
-        
-            identity = int(addr[1]) - 50000
-            if "Sending Ping Request" in data.decode():
+                second_lost_packets = second_lost_packets + 1
+                if second_lost_packets > 2:          # if the number of lost packets is greater than 2, then we can assume it's leaving
+                    print("Peer {0} is no longer alive.".format(self._second))
+                    print("My first successor is now peer {0}".format(self._first))
+                    self._TCPsocket.connect((socket.gethostname(), self._second + 50000))    # TCP socket connect to the second successor
+                    self._TCPsocket.send("What's your next successor")
+                    conn, addr = self._TCPsocket.accept()
+                    data = conn.recv(1024)
+                    self._second = int(data)   # set the new second successor
+                    print("My second successor is now peer {0}".format(self._second))
+
+                    # Start ping the new first and second successor
+                    self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._first + 50000))
+                    data, addr = self._UDPsocket.recvfrom(1024)
+                    print(data.decode())
+                    time.sleep(1)
+
+                    self._UDPsocket.sendto(message.encode(), (socket.gethostname(), self._second + 50000))
+                    data, addr = self._UDPsocket.recvfrom(1024)
+                    print(data.decode())
+                
+                    second_lost_packets = 0           # set the number of lost packets to zero again
+
+            time.sleep(20)     # send ping messages every 20 seconds
+
+    def server_thread(self):   
+        i = 0
+        while True:
+            # FIRST PART: Deal with UDP ping message 
+            data, addr = self._UDPsocket.recvfrom(1024)
+            if data:
+                identity = int(addr[1]) - 50000
+               
                 i = i + 1
                 if i % 2 == 1:
                     self._first_predecessor = identity
-                else:
+                if i % 2 == 0 and identity != self._first_predecessor:
                     self._second_predecessor = identity
-                response = "A ping request message was received from Peer {0}".format(identity)
+                print(data.decode())
+                response = "A ping response message was received from Peer {0}".format(self._identity)
                 self._UDPsocket.sendto(response.encode(), addr)
-                print(response)
-            if "A ping request message was received" in data.decode():
-                time.sleep(2) # sleep for 2 seconds to print the response message
-                print("A ping response message was received from Peer {0}".format(identity))
 
             # SECOND PART: Deal with TCP File request message
             conn, addr = self._TCPsocket.accept()
@@ -143,8 +169,10 @@ class Peer:
                         self._second = parts[-2]
                     print("My first successor is now peer {0}".format(self._first))
                     print("My second successor is now peer {0}".format(self._second))
-            
-                    
+                if "What's your next successor" in data:
+                    self._TCPsocket.connect(addr)
+                    self._TCPsocket.send("{0}".format(self._first))
+                              
     def sort(self, first, second):
         if (self._identity < first and self._identity > second) or (self._identity > first and self._identity < second):
             if first > second:
@@ -163,7 +191,7 @@ class Peer:
                 print(message)
 
             if "quit" in string:      # Dealing with the peer leaving part
-                self._first_predecessor, self._second_predecessor = sort(self._first_predecessor, self._second_predecessor)
+                self._first_predecessor, self._second_predecessor = self.sort(self._first_predecessor, self._second_predecessor)
                 message = "Peer {0} will depart from the network. {1} {2}".format(self._identity, self._first, self._second)                
         
                 self._TCPsocket.connect((socket.gethostname(), self._first_predecessor + 50000))
@@ -172,7 +200,6 @@ class Peer:
                 self._TCPsocket.connect((socket.gethostname(), self._first_predecessor + 50000))
                 self._TCPsocket.send(message)
                 break
-
 
 def main():
     # Read in command line arguments, and create a Peer object
@@ -183,101 +210,12 @@ def main():
 
     # Initialize the client and server thread of each peer
     # Sending ping request to its successors and catch for response
-    client = threading.Thread(target = peer.send_ping_request, args = ())
-    server = threading.Thread(target = peer.catch_ping_response, args = ())
+    client = threading.Thread(target = peer.client_thread, args = ())
+    server = threading.Thread(target = peer.server_thread, args = ())
+    user_input = threading.Thread(target = peer.get_input)
+
     client.start()
     server.start()
-
-
-# def main():
-#     p1 = Peer(1, 2, 3)
-#     p2 = Peer(2, 3, 1)
-#     p3 = Peer(3, 1, 2)
-
-#     t1 = threading.Thread(target = p1.send_ping_request, args = ())
-#     t2 = threading.Thread(target = p1.catch_ping_response, args = ())
-
-#     t3 = threading.Thread(target = p2.send_ping_request, args = ())
-#     t4 = threading.Thread(target = p2.catch_ping_response, args = ())
-
-#     t5 = threading.Thread(target = p3.send_ping_request, args = ())
-#     t6 = threading.Thread(target = p3.catch_ping_response, args = ())
-
-#     t1.start()
-#     t2.start()
-#     t3.start()
-#     t4.start()
-#     t5.start()
-#     t6.start()
-
-# class ClientThread(threading.Thread):
-#     def __init__(self, peer):
-#         super(ClientThread, self).__init__()
-#         self._peer = peer
-#         self._sock = peer.sock
-    
-#     def send_ping_request(self):
-#         message = "Sending Ping Request"
-#         self._sock.sendto(message.encode(), (socket.gethostname(), self._peer.first + 50000))
-#         # self._sock.sendto(message.encode(), (socket.gethostname(), self._sock.second + 50000))
-
-# class ServerThread(threading.Thread):
-#     def __init__(self, peer):
-#         super(ServerThread, self).__init__()
-#         self._peer = peer
-#         self._sock = peer.sock
-
-#     def receive_and_respond(self):
-#         while True:
-#             data, addr = self._sock.recvfrom(1024) # buffer size 1024
-#             if data:
-#                 identity = int(addr[1]) - 50000
-#                 response = "I'm Peer {0}, A ping request message was received from Peer ".format(self._peer.identity) + str(identity)
-#                 self._sock.sendto(response.encode(), addr)
-#                 print(identity)
-#                 print(response)
-#             else:
-#                 continue
-
-# p1 = Peer(1, 2, 3)
-# p2 = Peer(2, 3, 4)
-# client1 = ClientThread(p1)
-# server1 = ServerThread(p1)
-
-# client2 = ClientThread(p2)
-# server2 = ServerThread(p2)
-
-# client1.start()
-# server1.start()
-# client2.start()
-# server2.start()
-
-# client1.send_ping_request()
-# server2.receive_and_respond()
-# client1.send_ping_request()
-# server1.receive_and_respond()
-
-# client1.join()
-# server1.join()
-# client2.join()
-# server2.join()
-
-
-# def main():
-    # identity = int(sys.argv[1])
-    # first = int(sys.argv[2])
-    # second = int(sys.argv[3])
-    # host = socket.gethostname()
-    # peer = Peer(identity, first, second, host, 50000 + identity)
-
-    # first_port = peer.first + 50000
-    # second_port = peer.second + 50000
-
-    # # Send messge to its two successors 
-    # sock.sendto("A ping request message was received from Peer " + peer.identity + ".", (local_ip, first_port))
-    # sock.sendto("A ping request message was received from Peer " + peer.identity + ".", (local_ip, second_port))
-    
-    
-
+    user_input.start()
 
 if __name__ == "__main__":main()
