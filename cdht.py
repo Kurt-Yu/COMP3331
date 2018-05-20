@@ -303,14 +303,16 @@ class Peer:
     def TCPclient(self, port, message = None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(('localhost', port))
-        if message:
-            sock.sendall(message.encode())
-            data = sock.recv(1024).decode()
-            return data
+
+        sock.sendall(message.encode())
+        data = sock.recv(1024).decode()
+        sock.close()
+        return data
+        
 
     def TCPserver(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # sock.bind(('localhost', self._identity + 50000))
+        sock.bind(('localhost', self._identity + 50000))
         sock.listen(5)
         conn, addr = sock.accept()
 
