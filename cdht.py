@@ -100,7 +100,7 @@ class Peer:
         if "File request message for" in message:
             sock.close()
             return None
-        if ("is not stored here" in message) or ("Received a response message from peer" in message):
+        if ("is not stored here" in message) or ("Received a response message from peer" in message) or ("will depart from the network" in message):
             sock.close()
             return None
         data = sock.recv(1024).decode()
@@ -142,11 +142,11 @@ class Peer:
                 parts = data.split()
                 print(" ".join(parts[:-2]))
 
-                if self._first == int(addr[1]) - 50000:
-                    self._first = parts[-2]
-                    self._second = parts[-1]
+                if self._first == int(parts[1]):
+                    self._first = int(parts[-2])
+                    self._second = int(parts[-1])
                 else:
-                    self._second = parts[-2]
+                    self._second = int(parts[-2])
                 print("My first successor is now peer {0}".format(self._first))
                 print("My second successor is now peer {0}".format(self._second))
 
@@ -164,10 +164,14 @@ class Peer:
                 self.TCPclient(self._first + 50000, message)
 
             if "quit" in string:      # Dealing with the peer leaving part
-                message = "Peer {0} will depart from the network. {1} {2}".format(self._identity, self._first, self._second)                
+                message = "Peer {0} will depart from the network. {1} {2}".format(self._identity, self._first, self._second) 
+                print("My first predecessor is {}".format(self._first_predecessor))  
+                print("My second predecessor is {}".format(self._second_predecessor))             
                 self.TCPclient(self._first_predecessor + 50000, message)
                 time.sleep(1)
                 self.TCPclient(self._second_predecessor + 50000, message)
+                print("something")
+                sys.exit()
                 break
 
 def main():
