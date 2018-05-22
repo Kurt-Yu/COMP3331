@@ -14,6 +14,7 @@ class Peer:
         self._first_successor_lost = 0    # This is the value that used to track how many packets are lost
         self._second_successor_lost = 0   # during the ping request and response
         self._request_port = 0
+        self._run = True
         
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -30,7 +31,7 @@ class Peer:
         return self._second
 
     def UDPclient(self):
-        while True:
+        while True and self._run:
             self.ping("first")
             time.sleep(1)       # sleep for 1 second and then ping the second one 
             self.ping("second")
@@ -81,7 +82,7 @@ class Peer:
     def UDPserver(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(('localhost', self._identity + 50000))
-        while True:
+        while True and self._run:
             data, addr = sock.recvfrom(1024)
             data = data.decode().split()
             if data[-1] == "first":
@@ -112,7 +113,7 @@ class Peer:
         sock.bind(('localhost', self._identity + 50000))
         sock.listen(5)
 
-        while True:
+        while True and self._run:
             conn, addr = sock.accept()
             data = conn.recv(1024).decode()
             if "What's your next successor" in data:
@@ -156,7 +157,7 @@ class Peer:
                 self.ping("second")
         
     def get_input(self):
-        while True:
+        while True and self._run:
             string = input()
             if "request" in string:   # Dealing with the request file part
                 message = "File request message for {0} has been sent to my successor. {1} {2}".format(string.split()[1], self._identity, self._identity)
@@ -164,15 +165,11 @@ class Peer:
                 self.TCPclient(self._first + 50000, message)
 
             if "quit" in string:      # Dealing with the peer leaving part
-                message = "Peer {0} will depart from the network. {1} {2}".format(self._identity, self._first, self._second) 
-                print("My first predecessor is {}".format(self._first_predecessor))  
-                print("My second predecessor is {}".format(self._second_predecessor))             
+                message = "Peer {0} will depart from the network. {1} {2}".format(self._identity, self._first, self._second)           
                 self.TCPclient(self._first_predecessor + 50000, message)
                 time.sleep(1)
                 self.TCPclient(self._second_predecessor + 50000, message)
-                print("something")
-                sys.exit()
-                break
+                self._run = False
 
 def main():
     # Read in command line arguments, and create a Peer object
