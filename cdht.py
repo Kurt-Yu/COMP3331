@@ -35,7 +35,7 @@ class Peer:
             self.ping("first")
             time.sleep(1)       # sleep for 1 second and then ping the second one 
             self.ping("second")
-            time.sleep(20)      # send ping request every 15 seconds
+            time.sleep(20)      # send ping request every 20 seconds
     
     def ping(self, string):
         if string == "first":
